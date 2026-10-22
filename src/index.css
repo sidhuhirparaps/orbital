@@ -1,0 +1,197 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;1,9..40,400&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --canvas: 33 18% 90%;
+  --surface: 30 19% 92%;
+  --surface-alt: 34 21% 94%;
+  --line: 32 15% 83%;
+  --foreground: 30 10% 16%;
+  --muted: 32 8% 37%;
+  --faint: 24 4% 46%;
+  --sage: 155 63% 49%;
+  --terracotta: 4 100% 73%;
+  --blush: 347 86% 83%;
+  --dustyblue: 186 75% 84%;
+  --yellow: 59 92% 53%;
+  --neon: 75 100% 59%;
+  --lavender: 260 77% 83%;
+  --purple: 258 90% 66%;
+  --brown: 31 43% 59%;
+  --radius: 16px;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    border-color: hsl(var(--line));
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    background-color: hsl(var(--canvas));
+  }
+
+  body {
+    @apply m-0 font-sans text-foreground antialiased;
+    font-weight: 400;
+    overflow-x: hidden;
+  }
+
+  #root {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+    border: none;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    display: block;
+  }
+
+  /* Never let shell/layout wrappers look like a giant raised card */
+  main,
+  [data-shell] {
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
+    outline: none !important;
+  }
+}
+
+@layer components {
+  .neu-raised {
+    @apply bg-surface shadow-neu-out rounded-card;
+  }
+
+  .neu-raised-sm {
+    @apply bg-surface shadow-neu-out-sm rounded-card;
+  }
+
+  .neu-inset {
+    @apply bg-surface shadow-neu-in rounded-card;
+  }
+
+  .neu-inset-sm {
+    @apply bg-surface shadow-neu-in-sm rounded-input;
+  }
+
+  .sidebar-float {
+    @apply rounded-sidebar bg-surface shadow-neu-sidebar;
+    border: 1px solid rgba(255, 252, 248, 0.65);
+  }
+
+  .nav-active {
+    @apply text-foreground shadow-neu-in-sidebar;
+    background-color: #f4f1ed;
+    border: 1px solid rgba(170, 152, 134, 0.1);
+  }
+
+  /* Soft white/cream fill on hover — not pressed */
+  .nav-item-idle {
+    @apply text-muted;
+    transition:
+      background-color 180ms ease,
+      color 180ms ease;
+  }
+
+  .nav-item-idle:hover {
+    color: hsl(var(--foreground));
+    background-color: #f6f3f1;
+    box-shadow: none;
+  }
+
+  .btn-neu {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] bg-surface px-4 py-2.5 text-sm font-medium text-foreground shadow-neu-out-sm transition-all duration-200 ease-out;
+  }
+
+  .btn-neu:hover {
+    @apply -translate-y-[3px] shadow-neu-hover;
+  }
+
+  .btn-neu:active {
+    @apply translate-y-0 shadow-neu-in-sm;
+  }
+
+  .btn-dark-neu {
+    @apply inline-flex items-center justify-center gap-2 rounded-[12px] bg-foreground px-4 py-2.5 text-sm font-semibold uppercase tracking-wide text-surface shadow-neu-out-sm transition-all duration-200 ease-out;
+  }
+
+  .btn-dark-neu:hover {
+    @apply -translate-y-[3px] shadow-neu-hover;
+  }
+
+  .progress-track {
+    @apply h-[6px] w-full overflow-hidden rounded-pill bg-surface shadow-neu-in-sm;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-pill bg-sage transition-all duration-500;
+  }
+
+  .pip {
+    @apply inline-block h-2 w-2 rounded-full;
+  }
+
+  .page-container {
+    @apply mx-auto w-full max-w-[1100px] bg-transparent shadow-none;
+  }
+
+  .tablet-grid {
+    @apply grid gap-4 md:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .mobile-stats-card {
+    @apply neu-raised p-4;
+  }
+
+  .stats-number-box {
+    @apply neu-inset-sm flex flex-col items-center justify-center px-4 py-3;
+  }
+
+  /*
+   * Stat number tiles: default stays sunken.
+   * Hover = slight natural lighten (surface-alt family), soft inset — no white wash / border ring.
+   */
+  .stat-tile {
+    transition:
+      box-shadow 200ms ease,
+      background-color 200ms ease;
+  }
+
+  .stat-tile:hover,
+  .group:hover .stat-tile {
+    background-color: #f2efeb;
+    box-shadow:
+      inset -2px -2px 4px rgba(255, 250, 244, 0.42),
+      inset 2px 2px 4px rgba(160, 143, 126, 0.16);
+  }
+
+  .mobile-header-hide {
+    @apply hidden;
+  }
+}
+
+@media (max-width: 767px) {
+  .mobile-header-hide {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

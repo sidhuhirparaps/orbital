@@ -1,0 +1,17 @@
+{
+  "name": "ORBITAL",
+  "short_name": "ORBITAL",
+  "description": "Autonomous Project Management",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ebe7e2",
+  "theme_color": "#ebe7e2",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

@@ -11,6 +11,7 @@ import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 import { canManageGoals } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 
@@ -29,12 +30,12 @@ function Goals() {
   const [wizardOpen, setWizardOpen] = useState(false)
   const showManage = !isAuthenticated || canManageGoals(role)
 
-  const { data: goalsData, isLoading } = useQuery({
+  const goalsQuery = useQuery({
     queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
     enabled: ready,
   })
-  const goals = ready ? goalsData ?? [] : []
+  const goals = goalsQuery.data ?? []
 
   const filtered = useMemo(() => {
     if (filter === 'all') return goals
@@ -42,7 +43,7 @@ function Goals() {
     return goals.filter((g) => g.status === 'active')
   }, [goals, filter])
 
-  if (!ready || isLoading) return <PageSkeleton />
+  if (shouldShowPageSkeleton(ready, goalsQuery)) return <PageSkeleton />
 
   return (
     <div>

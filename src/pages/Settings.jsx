@@ -18,6 +18,7 @@ import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) =>
   `${String(i).padStart(2, '0')}:00`,
@@ -37,11 +38,12 @@ function Settings() {
   const ready = useQueryReady()
   const guard = useGuardedAction()
   const queryClient = useQueryClient()
-  const { data, isLoading } = useQuery({
+  const settingsQuery = useQuery({
     queryKey: ['settings', workspaceId],
     queryFn: () => api.data.getSettings(),
     enabled: ready,
   })
+  const data = settingsQuery.data
 
   const [workspaceName, setWorkspaceName] = useState('My Team')
   const [workingHoursStart, setWorkingHoursStart] = useState('09:00')
@@ -76,7 +78,7 @@ function Settings() {
     onError: (err) => toast.error(err.message || 'Save failed'),
   })
 
-  if (!ready || isLoading) return <PageSkeleton cards={2} />
+  if (shouldShowPageSkeleton(ready, settingsQuery)) return <PageSkeleton cards={2} />
 
   return (
     <div className="space-y-5">

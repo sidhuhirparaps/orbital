@@ -49,6 +49,7 @@ function MyTasks() {
       if (!data) return
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] })
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['goals'] })
       queryClient.invalidateQueries({ queryKey: ['updates'] })
       toast.success('Updated')
     },

@@ -22,10 +22,13 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       // Keep page data warm so route changes don’t flash PageSkeleton
-      staleTime: 60_000,
+      staleTime: 5 * 60_000,
       gcTime: 30 * 60_000,
       refetchOnMount: false,
       refetchOnWindowFocus: false,
+      refetchOnReconnect: false,
+      // When a route remounts, reuse the last data for this query immediately
+      placeholderData: (previousData) => previousData,
     },
   },
 })

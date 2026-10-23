@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AuthProvider } from '@/hooks/useAuth'
+import { WorkspaceProvider } from '@/hooks/useWorkspace'
 import AppLayout from '@/components/layout/AppLayout'
 import CursorGlow from '@/components/layout/CursorGlow'
 import { Toaster } from '@/components/ui/sonner'
@@ -15,6 +16,7 @@ import Settings from '@/pages/Settings'
 import Onboarding from '@/pages/Onboarding'
 import Auth from '@/pages/Auth'
 import NotFound from '@/pages/NotFound'
+import OAuthHashHandler from '@/components/auth/OAuthHashHandler'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -54,11 +56,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BrowserRouter>
-          <CursorGlow />
-          <AppRoutes />
-          <Toaster position="top-right" />
-        </BrowserRouter>
+        <WorkspaceProvider>
+          <BrowserRouter>
+            <OAuthHashHandler />
+            <CursorGlow />
+            <AppRoutes />
+            <Toaster position="top-right" />
+          </BrowserRouter>
+        </WorkspaceProvider>
       </AuthProvider>
     </QueryClientProvider>
   )

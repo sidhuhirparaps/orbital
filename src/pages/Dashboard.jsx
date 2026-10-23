@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { canManageGoals } from '@/lib/roles'
 import { greetingForNow } from '@/lib/dates'
 import { cn } from '@/lib/utils'
@@ -47,30 +48,37 @@ function StatCell({ label, value, hint, onClick, accent }) {
 }
 
 function Dashboard() {
-  const { user, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
+  const { workspaceId, role } = useWorkspace()
   const guard = useGuardedAction()
   const navigate = useNavigate()
   const [wizardOpen, setWizardOpen] = useState(false)
+  const ready = !isAuthenticated || Boolean(workspaceId)
 
   const { data: goals = [], isLoading: goalsLoading } = useQuery({
-    queryKey: ['goals'],
+    queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
+    enabled: ready,
   })
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks'],
+    queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
+    enabled: ready,
   })
   const { data: updates = [], isLoading: updatesLoading } = useQuery({
-    queryKey: ['updates'],
+    queryKey: ['updates', workspaceId],
     queryFn: () => api.data.updates.list(),
+    enabled: ready,
   })
   const { data: agents = [] } = useQuery({
-    queryKey: ['agents'],
+    queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
+    enabled: ready,
   })
   const { data: members = [] } = useQuery({
-    queryKey: ['members'],
+    queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
+    enabled: ready,
   })
 
   const loading = goalsLoading || tasksLoading || updatesLoading
@@ -113,7 +121,7 @@ function Dashboard() {
             Here&apos;s what&apos;s happening across your projects today.
           </p>
         </div>
-        {!isAuthenticated || canManageGoals(user?.role) ? (
+        {!isAuthenticated || canManageGoals(role) ? (
           <Button
             className="btn-neu uppercase tracking-[0.08em]"
             onClick={guard(() => setWizardOpen(true))}

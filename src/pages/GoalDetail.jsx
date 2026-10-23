@@ -13,30 +13,36 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { canEditTasks, canManageGoals } from '@/lib/roles'
 import { dueClassName, dueLabel, formatDate } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 
 function GoalDetail() {
   const { goalId } = useParams()
-  const { user, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
+  const { workspaceId, role } = useWorkspace()
   const guard = useGuardedAction()
   const queryClient = useQueryClient()
   const [modalOpen, setModalOpen] = useState(false)
-  const showAddTask = !isAuthenticated || canManageGoals(user?.role) || canEditTasks(user?.role)
-  const showTaskUpdate = !isAuthenticated || canEditTasks(user?.role)
+  const showAddTask = !isAuthenticated || canManageGoals(role) || canEditTasks(role)
+  const showTaskUpdate = !isAuthenticated || canEditTasks(role)
+  const ready = !isAuthenticated || Boolean(workspaceId)
 
   const { data: goal, isLoading: goalLoading } = useQuery({
-    queryKey: ['goals', goalId],
+    queryKey: ['goals', workspaceId, goalId],
     queryFn: () => api.data.goals.get(goalId),
+    enabled: ready,
   })
   const { data: tasks = [], isLoading: tasksLoading } = useQuery({
-    queryKey: ['tasks', { goalId }],
+    queryKey: ['tasks', workspaceId, { goalId }],
     queryFn: () => api.data.tasks.list({ goalId }),
+    enabled: ready,
   })
   const { data: members = [] } = useQuery({
-    queryKey: ['members'],
+    queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
+    enabled: ready,
   })
 
   const memberMap = useMemo(

@@ -84,6 +84,21 @@
     @apply bg-surface shadow-neu-in-sm rounded-input;
   }
 
+  /* Workspace switcher tab — recessed into warm canvas */
+  .workspace-pill {
+    background: #ebe7e2;
+    border-radius: 10px;
+    box-shadow:
+      inset -3px -3px 6px rgba(255, 250, 244, 0.68),
+      inset 3px 3px 6px rgba(160, 143, 126, 0.24);
+  }
+
+  .workspace-pill:hover {
+    box-shadow:
+      inset -3px -3px 6px rgba(255, 250, 244, 0.68),
+      inset 3px 3px 6px rgba(160, 143, 126, 0.24);
+  }
+
   .sidebar-float {
     @apply rounded-sidebar bg-surface shadow-neu-sidebar;
     border: 1px solid rgba(255, 252, 248, 0.65);

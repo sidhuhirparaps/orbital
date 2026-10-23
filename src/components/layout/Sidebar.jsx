@@ -5,9 +5,11 @@ import { ChevronLeft, ChevronRight, LogIn, LogOut } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import LogoIcon from '@/components/layout/LogoIcon'
 import SidebarClock from '@/components/layout/SidebarClock'
+import WorkspaceSwitcher from '@/components/layout/WorkspaceSwitcher'
 import { MANAGEMENT_NAV, WORKSPACE_NAV } from '@/components/layout/navConfig'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { isOverdue } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 
@@ -48,11 +50,13 @@ function NavGroup({ title, items, collapsed }) {
 
 function Sidebar() {
   const { logout, isAuthenticated } = useAuth()
+  const { workspaceId } = useWorkspace()
   const [collapsed, setCollapsed] = useState(false)
 
   const { data: tasks = [] } = useQuery({
-    queryKey: ['tasks'],
+    queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
+    enabled: !isAuthenticated || Boolean(workspaceId),
   })
 
   const statusCounts = useMemo(() => {
@@ -90,6 +94,7 @@ function Sidebar() {
       </div>
 
       <div className="flex-1 overflow-y-auto pr-1">
+        <WorkspaceSwitcher collapsed={collapsed} />
         <NavGroup title="Workspace" items={WORKSPACE_NAV} collapsed={collapsed} />
         <NavGroup title="Management" items={MANAGEMENT_NAV} collapsed={collapsed} />
       </div>

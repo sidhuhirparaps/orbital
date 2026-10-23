@@ -44,6 +44,7 @@ export function mapGoal(row) {
     progress: Number(row.progress ?? 0),
     ownerId: row.owner_id,
     ownerName: row.owner_name ?? null,
+    workspaceId: row.workspace_id ?? null,
     dueDate: row.target_date ?? row.due_date ?? null,
     clarifyingAnswers: row.clarifying_questions ?? row.clarifyingAnswers ?? {},
     aiContext: row.ai_context ?? null,
@@ -66,6 +67,7 @@ export function goalToRow(payload, { forCreate = false } = {}) {
     row.clarifying_questions = payload.clarifyingAnswers
   }
   if (payload.aiContext !== undefined) row.ai_context = payload.aiContext
+  if (payload.workspaceId !== undefined) row.workspace_id = payload.workspaceId
   if (forCreate) {
     row.id = payload.id || uid('goal')
     row.created_date = now
@@ -76,6 +78,7 @@ export function goalToRow(payload, { forCreate = false } = {}) {
     row.owner_id = payload.ownerId ?? null
     row.target_date = payload.dueDate ?? null
     row.clarifying_questions = payload.clarifyingAnswers ?? {}
+    row.workspace_id = payload.workspaceId ?? null
     if (payload.createdById) row.created_by_id = payload.createdById
   }
   return row
@@ -99,6 +102,7 @@ export function mapTask(row) {
     checkIns: Array.isArray(row.check_ins) ? row.check_ins : [],
     estimatedHours: row.estimated_hours ?? null,
     createdByAi: Boolean(row.created_by_ai),
+    workspaceId: row.workspace_id ?? null,
     createdAt: row.created_date ?? row.created_at,
     updatedAt: row.updated_date ?? row.updated_at,
   }
@@ -123,6 +127,7 @@ export function taskToRow(payload, { forCreate = false } = {}) {
   if (payload.checkIns !== undefined) row.check_ins = payload.checkIns
   if (payload.estimatedHours !== undefined) row.estimated_hours = payload.estimatedHours
   if (payload.createdByAi !== undefined) row.created_by_ai = payload.createdByAi
+  if (payload.workspaceId !== undefined) row.workspace_id = payload.workspaceId
   if (forCreate) {
     row.id = payload.id || uid('task')
     row.created_date = now
@@ -136,6 +141,7 @@ export function taskToRow(payload, { forCreate = false } = {}) {
     row.order_index = payload.order ?? 0
     row.check_ins = payload.checkIns ?? []
     row.created_by_ai = payload.createdByAi ?? false
+    row.workspace_id = payload.workspaceId ?? null
     if (payload.createdById) row.created_by_id = payload.createdById
   }
   return row
@@ -174,9 +180,11 @@ export function updateToRow(payload, { forCreate = false } = {}) {
     message: payload.message ?? '',
     updated_date: now,
   }
+  if (payload.workspaceId !== undefined) row.workspace_id = payload.workspaceId
   if (forCreate) {
     row.id = payload.id || uid('upd')
     row.created_date = now
+    row.workspace_id = payload.workspaceId ?? null
     if (payload.createdById) row.created_by_id = payload.createdById
   }
   return row
@@ -245,13 +253,32 @@ export function mapSettings(row) {
     }
   }
   return {
-    workspaceName: row.workspace_name,
-    workingHoursStart: row.working_hours_start,
-    workingHoursEnd: row.working_hours_end,
-    pingFrequency: row.ping_frequency,
-    aiTone: row.ai_tone,
+    workspaceName: row.workspace_name ?? row.name ?? 'My Team',
+    workingHoursStart: row.working_hours_start ?? '09:00',
+    workingHoursEnd: row.working_hours_end ?? '17:00',
+    pingFrequency: normalizePingFrequency(row.ping_frequency),
+    aiTone: normalizeAiTone(row.ai_tone),
     onboardingComplete: Boolean(row.onboarding_complete),
   }
+}
+
+function normalizePingFrequency(value) {
+  if (!value) return 'Once daily'
+  const v = String(value).toLowerCase()
+  if (v.includes('twice')) return 'Twice daily'
+  if (v.includes('week')) return 'Weekly'
+  if (v === 'daily' || v.includes('once')) return 'Once daily'
+  return value
+}
+
+function normalizeAiTone(value) {
+  if (!value) return 'Friendly & casual'
+  const v = String(value).toLowerCase()
+  if (v.includes('professional')) return 'Professional & concise'
+  if (v.includes('direct')) return 'Direct & assertive'
+  if (v.includes('coach') || v.includes('encourag')) return 'Encouraging coach'
+  if (v.includes('friendly') || v === 'friendly') return 'Friendly & casual'
+  return value
 }
 
 export function settingsToRow(patch) {
@@ -263,4 +290,50 @@ export function settingsToRow(patch) {
   if (patch.aiTone !== undefined) row.ai_tone = patch.aiTone
   if (patch.onboardingComplete !== undefined) row.onboarding_complete = patch.onboardingComplete
   return row
+}
+
+/** Map workspaces row (settings live on the workspace). */
+export function mapWorkspace(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    name: row.name || 'Workspace',
+    ownerId: row.owner_id ?? null,
+    ownerEmail: row.owner_email ?? null,
+    workingHoursStart: row.working_hours_start ?? '09:00',
+    workingHoursEnd: row.working_hours_end ?? '17:00',
+    pingFrequency: normalizePingFrequency(row.ping_frequency),
+    aiTone: normalizeAiTone(row.ai_tone),
+    createdAt: row.created_date ?? row.created_at,
+    updatedAt: row.updated_date ?? row.updated_at,
+  }
+}
+
+export function workspaceToSettings(row) {
+  if (!row) return mapSettings(null)
+  return {
+    workspaceName: row.name || 'My Team',
+    workingHoursStart: row.working_hours_start ?? '09:00',
+    workingHoursEnd: row.working_hours_end ?? '17:00',
+    pingFrequency: normalizePingFrequency(row.ping_frequency),
+    aiTone: normalizeAiTone(row.ai_tone),
+    onboardingComplete: true,
+  }
+}
+
+/** workspace_members → Team UI member shape */
+export function mapWorkspaceMember(row) {
+  if (!row) return null
+  return {
+    id: row.user_id || row.id,
+    membershipId: row.id,
+    workspaceId: row.workspace_id,
+    name: row.full_name || row.email || 'Member',
+    email: row.email,
+    role: row.role || 'member',
+    status: row.status || 'active',
+    avatar: null,
+    joinedAt: row.created_date ?? row.created_at,
+    userId: row.user_id,
+  }
 }

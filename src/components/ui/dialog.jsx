@@ -56,14 +56,15 @@ function DialogContent({ className, children, ...props }) {
       <button
         type="button"
         aria-label="Close dialog"
-        className="absolute inset-0 h-full w-full border-0 bg-[hsl(var(--foreground)/0.32)] backdrop-blur-[3px]"
+        className="absolute inset-0 h-full w-full border-0 bg-[rgba(46,42,38,0.25)] backdrop-blur-[12px]"
         onClick={() => setOpen(false)}
       />
       <div
         role="dialog"
         aria-modal="true"
         className={cn(
-          'relative z-10 w-full max-w-lg neu-raised p-6 animate-in fade-in zoom-in-95',
+          'relative z-10 w-full max-w-md rounded-[20px] bg-[#eeeae6] p-6 shadow-neu-out',
+          'animate-in fade-in zoom-in-95 duration-200',
           className,
         )}
         {...props}
@@ -71,10 +72,10 @@ function DialogContent({ className, children, ...props }) {
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="absolute right-5 top-5 rounded-full p-1.5 text-muted transition hover:text-foreground"
+          className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-[10px] bg-[#eeeae6] text-muted shadow-neu-out-sm transition hover:text-foreground hover:shadow-neu-hover"
           aria-label="Close"
         >
-          <X className="h-4 w-4" strokeWidth={2} />
+          <X className="h-3.5 w-3.5" strokeWidth={2.25} />
         </button>
         {children}
       </div>

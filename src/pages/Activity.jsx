@@ -5,23 +5,33 @@ import PageSkeleton from '@/components/shared/PageSkeleton'
 import LiveActivityFeed from '@/components/activity/LiveActivityFeed'
 import ActivityItem from '@/components/activity/ActivityItem'
 import { api } from '@/api/client'
+import { useAuth } from '@/hooks/useAuth'
+import { useWorkspace } from '@/hooks/useWorkspace'
 
 function Activity() {
+  const { isAuthenticated } = useAuth()
+  const { workspaceId } = useWorkspace()
+  const ready = !isAuthenticated || Boolean(workspaceId)
+
   const { data: updates = [], isLoading: uLoading } = useQuery({
-    queryKey: ['updates'],
+    queryKey: ['updates', workspaceId],
     queryFn: () => api.data.updates.list(),
+    enabled: ready,
   })
   const { data: agentActivity = [], isLoading: aLoading } = useQuery({
-    queryKey: ['agent_activity'],
+    queryKey: ['agent_activity', workspaceId],
     queryFn: () => api.data.agent_activity.list(),
+    enabled: ready,
   })
   const { data: agents = [] } = useQuery({
-    queryKey: ['agents'],
+    queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
+    enabled: ready,
   })
   const { data: members = [] } = useQuery({
-    queryKey: ['members'],
+    queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
+    enabled: ready,
   })
 
   const sortedUpdates = useMemo(

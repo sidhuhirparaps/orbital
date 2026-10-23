@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { canManageGoals } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 
@@ -20,15 +21,17 @@ const FILTERS = [
 ]
 
 function Goals() {
-  const { user, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
+  const { workspaceId, role } = useWorkspace()
   const guard = useGuardedAction()
   const [filter, setFilter] = useState('active')
   const [wizardOpen, setWizardOpen] = useState(false)
-  const showManage = !isAuthenticated || canManageGoals(user?.role)
+  const showManage = !isAuthenticated || canManageGoals(role)
 
   const { data: goals = [], isLoading } = useQuery({
-    queryKey: ['goals'],
+    queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
+    enabled: !isAuthenticated || Boolean(workspaceId),
   })
 
   const filtered = useMemo(() => {

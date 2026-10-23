@@ -8,13 +8,18 @@ import {
   mapSettings,
   mapTask,
   mapUpdate,
+  mapWorkspace,
+  mapWorkspaceMember,
   memberToRow,
   goalToRow,
   taskToRow,
   updateToRow,
   settingsToRow,
+  workspaceToSettings,
   uid,
 } from '@/api/mappers'
+import { getActiveWorkspaceId } from '@/lib/workspaceStore'
+import { normalizeEmail, validateInviteInput } from '@/lib/validation'
 import {
   previewAgentActivity,
   previewAgents,
@@ -31,6 +36,9 @@ import {
 const EMPTY_DEMO_MEMBER_ID = 'user-alex'
 const RICH_DEMO_MEMBER_ID = 'user-sam'
 const RICH_DEMO_GOAL_IDS = new Set(['goal-1', 'goal-2', 'goal-3'])
+
+/** Prevents StrictMode / parallel refresh from creating two personal workspaces. */
+const personalWorkspaceBootstrapInflight = new Map()
 
 function throwIfError(error, fallback = 'Request failed') {
   if (!error) return
@@ -104,7 +112,11 @@ async function resolveMemberForAuthUser(authUser) {
     .select('*')
     .eq('auth_user_id', authUser.id)
     .maybeSingle()
-  if (byAuth.data) return mapMember(byAuth.data)
+  if (byAuth.data) {
+    const profile = mapMember(byAuth.data)
+    await acceptPendingWorkspaceInvites(profile)
+    return profile
+  }
 
   if (email) {
     const byEmail = await supabase
@@ -122,8 +134,9 @@ async function resolveMemberForAuthUser(authUser) {
         .eq('id', byEmail.data.id)
         .select('*')
         .single()
-      if (linked.data) return mapMember(linked.data)
-      return mapMember(byEmail.data)
+      const profile = mapMember(linked.data || byEmail.data)
+      await acceptPendingWorkspaceInvites(profile)
+      return profile
     }
   }
 
@@ -132,11 +145,12 @@ async function resolveMemberForAuthUser(authUser) {
     authUser.user_metadata?.full_name ||
     (email ? email.split('@')[0] : 'Member')
 
+  // Profile only — workspace role comes from workspace_members
   const row = memberToRow({
     id: uid('user'),
     name,
     email: email || `${authUser.id}@users.local`,
-    role: 'lead',
+    role: 'member',
     status: 'active',
     authUserId: authUser.id,
     joinedAt: new Date().toISOString(),
@@ -144,7 +158,34 @@ async function resolveMemberForAuthUser(authUser) {
 
   const created = await supabase.from('members').insert(row).select('*').single()
   throwIfError(created.error, 'Could not create member profile')
-  return mapMember(created.data)
+  const profile = mapMember(created.data)
+  await acceptPendingWorkspaceInvites(profile)
+  return profile
+}
+
+/** When someone signs in, activate any pending invites that match their email. */
+async function acceptPendingWorkspaceInvites(member) {
+  const email = normalizeEmail(member?.email)
+  if (!email || !member?.id) return
+
+  const { data: pending, error } = await supabase
+    .from('workspace_members')
+    .select('id')
+    .ilike('email', email)
+    .eq('status', 'invited')
+  if (error || !pending?.length) return
+
+  const now = new Date().toISOString()
+  await supabase
+    .from('workspace_members')
+    .update({
+      status: 'active',
+      user_id: member.id,
+      full_name: member.name || email.split('@')[0],
+      updated_date: now,
+    })
+    .ilike('email', email)
+    .eq('status', 'invited')
 }
 
 /** Recalculate goal.progress from its tasks (done / total). */
@@ -190,14 +231,35 @@ async function syncGoalProgress(goalId) {
   return mapGoal(data)
 }
 
+const WORKSPACE_SCOPED = new Set([
+  'goals',
+  'tasks',
+  'updates',
+  'pings',
+  'agents',
+  'agent_activity',
+])
+
+function requireWorkspaceId(explicit) {
+  const id = explicit || getActiveWorkspaceId()
+  if (!id) throw new Error('No active workspace selected')
+  return id
+}
+
 function collection(table, { mapRow, toRow, filterMap = {}, previewList, previewGet }) {
+  const scoped = WORKSPACE_SCOPED.has(table)
   return {
     async list(filter = {}) {
       if (!(await isLoggedIn())) {
         return typeof previewList === 'function' ? previewList(filter) : []
       }
       let query = supabase.from(table).select('*')
+      if (scoped) {
+        const ws = filter.workspaceId || getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+      }
       Object.entries(filter).forEach(([key, value]) => {
+        if (key === 'workspaceId') return
         if (value === undefined || value === null || value === '') return
         const column = filterMap[key] || key
         query = query.eq(column, value)
@@ -211,7 +273,12 @@ function collection(table, { mapRow, toRow, filterMap = {}, previewList, preview
       if (!(await isLoggedIn())) {
         return typeof previewGet === 'function' ? previewGet(id) : null
       }
-      const { data, error } = await supabase.from(table).select('*').eq('id', id).maybeSingle()
+      let query = supabase.from(table).select('*').eq('id', id)
+      if (scoped) {
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+      }
+      const { data, error } = await query.maybeSingle()
       throwIfError(error, `Failed to get ${table}`)
       return mapRow(data)
     },
@@ -219,8 +286,12 @@ function collection(table, { mapRow, toRow, filterMap = {}, previewList, preview
     async create(payload) {
       if (!(await isLoggedIn())) return null
       const authUser = await requireUser()
+      const withWs =
+        scoped && !payload.workspaceId
+          ? { ...payload, workspaceId: requireWorkspaceId() }
+          : payload
       const row = toRow(
-        { ...payload, createdById: authUser.id },
+        { ...withWs, createdById: authUser.id },
         { forCreate: true },
       )
       const { data, error } = await supabase.from(table).insert(row).select('*').single()
@@ -231,19 +302,24 @@ function collection(table, { mapRow, toRow, filterMap = {}, previewList, preview
     async update(id, patch) {
       if (!(await isLoggedIn())) return null
       const row = toRow(patch, { forCreate: false })
-      const { data, error } = await supabase
-        .from(table)
-        .update(row)
-        .eq('id', id)
-        .select('*')
-        .single()
+      let query = supabase.from(table).update(row).eq('id', id)
+      if (scoped) {
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+      }
+      const { data, error } = await query.select('*').single()
       throwIfError(error, `Failed to update ${table}`)
       return mapRow(data)
     },
 
     async remove(id) {
       if (!(await isLoggedIn())) return { ok: true }
-      const { error } = await supabase.from(table).delete().eq('id', id)
+      let query = supabase.from(table).delete().eq('id', id)
+      if (scoped) {
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+      }
+      const { error } = await query
       throwIfError(error, `Failed to delete ${table}`)
       return { ok: true }
     },
@@ -482,6 +558,8 @@ export const api = {
       async list(filter = {}) {
         if (!(await isLoggedIn())) return previewPings()
         let query = supabase.from('pings').select('*')
+        const ws = filter.workspaceId || getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
         if (filter.assigneeId) query = query.eq('assignee_id', filter.assigneeId)
         if (filter.taskId) query = query.eq('task_id', filter.taskId)
         const { data, error } = await query
@@ -519,7 +597,10 @@ export const api = {
     agents: {
       async list() {
         if (!(await isLoggedIn())) return previewAgents()
-        const { data, error } = await supabase.from('agents').select('*')
+        let query = supabase.from('agents').select('*')
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+        const { data, error } = await query
         throwIfError(error, 'Failed to list agents')
         return (data || []).map(mapAgent)
       },
@@ -527,7 +608,10 @@ export const api = {
         if (!(await isLoggedIn())) {
           return previewAgents().find((a) => a.id === id) ?? null
         }
-        const { data, error } = await supabase.from('agents').select('*').eq('id', id).maybeSingle()
+        let query = supabase.from('agents').select('*').eq('id', id)
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+        const { data, error } = await query.maybeSingle()
         throwIfError(error)
         return mapAgent(data)
       },
@@ -547,10 +631,13 @@ export const api = {
     agent_activity: {
       async list() {
         if (!(await isLoggedIn())) return previewAgentActivity()
-        const { data, error } = await supabase
+        let query = supabase
           .from('agent_activity')
           .select('*')
           .order('created_date', { ascending: false })
+        const ws = getActiveWorkspaceId()
+        if (ws) query = query.eq('workspace_id', ws)
+        const { data, error } = await query
         throwIfError(error, 'Failed to list agent activity')
         const rows = (data || []).map(mapAgentActivity)
         const member = await currentMember().catch(() => null)
@@ -582,55 +669,57 @@ export const api = {
       },
     },
     members: {
+      /** Active-workspace roster — only people who have joined (not pending invites). */
       async list() {
         if (!(await isLoggedIn())) return previewMembers()
-        const { data, error } = await supabase.from('members').select('*')
+        const ws = getActiveWorkspaceId()
+        if (!ws) return []
+        const { data, error } = await supabase
+          .from('workspace_members')
+          .select('*')
+          .eq('workspace_id', ws)
+          .eq('status', 'active')
+          .order('created_date', { ascending: true })
         throwIfError(error, 'Failed to list members')
-        return (data || []).map(mapMember)
+        return (data || []).map(mapWorkspaceMember)
       },
       async get(id) {
         if (!(await isLoggedIn())) {
           return previewMembers().find((m) => m.id === id) ?? null
         }
-        const { data, error } = await supabase.from('members').select('*').eq('id', id).maybeSingle()
+        const ws = getActiveWorkspaceId()
+        let query = supabase.from('workspace_members').select('*').eq('user_id', id)
+        if (ws) query = query.eq('workspace_id', ws)
+        const { data, error } = await query.maybeSingle()
         throwIfError(error)
-        return mapMember(data)
+        return mapWorkspaceMember(data)
       },
       async create(payload) {
-        if (!(await isLoggedIn())) return null
-        const row = memberToRow({ ...payload, id: payload.id || uid('user') })
-        const { data, error } = await supabase.from('members').insert(row).select('*').single()
-        throwIfError(error, 'Failed to create member')
-        return mapMember(data)
+        return api.teamAdmin.invite(payload)
       },
       async update(id, patch) {
-        if (!(await isLoggedIn())) return null
-        const row = {}
-        if (patch.name !== undefined) row.name = patch.name
-        if (patch.email !== undefined) row.email = patch.email
-        if (patch.role !== undefined) row.role = patch.role
-        if (patch.status !== undefined) row.status = patch.status
-        if (patch.avatar !== undefined) row.avatar = patch.avatar
-        row.updated_at = new Date().toISOString()
-        const { data, error } = await supabase
-          .from('members')
-          .update(row)
-          .eq('id', id)
-          .select('*')
-          .single()
-        throwIfError(error, 'Failed to update member')
-        return mapMember(data)
+        if (patch.role !== undefined) {
+          return api.teamAdmin.updateRole(id, patch.role)
+        }
+        return null
       },
       async remove(id) {
-        if (!(await isLoggedIn())) return { ok: true }
-        const { error } = await supabase.from('members').delete().eq('id', id)
-        throwIfError(error)
-        return { ok: true }
+        return api.teamAdmin.remove(id)
       },
     },
 
     async getSettings() {
       if (!(await isLoggedIn())) return previewSettings()
+      const ws = getActiveWorkspaceId()
+      if (ws) {
+        const { data, error } = await supabase
+          .from('workspaces')
+          .select('*')
+          .eq('id', ws)
+          .maybeSingle()
+        throwIfError(error, 'Failed to load settings')
+        if (data) return workspaceToSettings(data)
+      }
       const { data, error } = await supabase
         .from('settings')
         .select('*')
@@ -642,6 +731,23 @@ export const api = {
 
     async updateSettings(patch) {
       if (!(await isLoggedIn())) return null
+      const ws = getActiveWorkspaceId()
+      if (ws) {
+        const row = { updated_date: new Date().toISOString() }
+        if (patch.workspaceName !== undefined) row.name = patch.workspaceName
+        if (patch.workingHoursStart !== undefined) row.working_hours_start = patch.workingHoursStart
+        if (patch.workingHoursEnd !== undefined) row.working_hours_end = patch.workingHoursEnd
+        if (patch.pingFrequency !== undefined) row.ping_frequency = patch.pingFrequency
+        if (patch.aiTone !== undefined) row.ai_tone = patch.aiTone
+        const { data, error } = await supabase
+          .from('workspaces')
+          .update(row)
+          .eq('id', ws)
+          .select('*')
+          .single()
+        throwIfError(error, 'Failed to update settings')
+        return workspaceToSettings(data)
+      }
       const row = settingsToRow(patch)
       const { data, error } = await supabase
         .from('settings')
@@ -671,11 +777,14 @@ export const api = {
         id = session?.user?.id
       }
       if (!id) return []
-      const { data, error } = await supabase
+      let query = supabase
         .from('tasks')
         .select('*')
         .eq('assignee_id', id)
         .order('order_index', { ascending: true })
+      const ws = getActiveWorkspaceId()
+      if (ws) query = query.eq('workspace_id', ws)
+      const { data, error } = await query
       throwIfError(error, 'Failed to list my tasks')
       return (data || []).map(mapTask)
     },
@@ -718,6 +827,7 @@ export const api = {
             taskId,
             taskTitle: task.title,
             status,
+            workspaceId: task.workspace_id || getActiveWorkspaceId(),
             message: `Status updated to ${String(status).replace('_', ' ')}`,
           },
           { forCreate: true },
@@ -748,44 +858,256 @@ export const api = {
     },
   },
 
+  workspaces: {
+    async listMine() {
+      if (!(await isLoggedIn())) return []
+      const member = await currentMember()
+      const email = (member?.email || '').toLowerCase()
+      if (!email && !member?.id) return []
+
+      let query = supabase.from('workspace_members').select('*')
+      if (email) query = query.ilike('email', email)
+      else query = query.eq('user_id', member.id)
+
+      const { data: memberships, error } = await query
+      throwIfError(error, 'Failed to list workspace memberships')
+      if (!memberships?.length) return []
+
+      const ids = [...new Set(memberships.map((m) => m.workspace_id).filter(Boolean))]
+      const { data: spaces, error: wsErr } = await supabase
+        .from('workspaces')
+        .select('*')
+        .in('id', ids)
+      throwIfError(wsErr, 'Failed to list workspaces')
+
+      const byId = Object.fromEntries((spaces || []).map((w) => [w.id, mapWorkspace(w)]))
+      // One entry per workspace (duplicate membership rows shouldn't show twice)
+      const seen = new Set()
+      const list = []
+      for (const m of memberships) {
+        if (!m.workspace_id || seen.has(m.workspace_id)) continue
+        const workspace = byId[m.workspace_id]
+        if (!workspace) continue
+        seen.add(m.workspace_id)
+        list.push({
+          ...workspace,
+          role: m.role || 'member',
+          membershipId: m.id,
+          membershipStatus: m.status || 'active',
+        })
+      }
+      return list
+    },
+
+    /**
+     * Accidental double-bootstrap creates two "Name's Workspace" owner spaces.
+     * Keep the oldest owned workspace; remove the extras for this user.
+     */
+    async dedupeAccidentalPersonalWorkspaces() {
+      const list = await api.workspaces.listMine()
+      const owned = list
+        .filter((w) => w.role === 'owner')
+        .sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0))
+      if (owned.length < 2) return list
+
+      // Group by normalized name — only collapse exact-name clones
+      const byName = new Map()
+      for (const w of owned) {
+        const key = String(w.name || '').trim().toLowerCase()
+        if (!byName.has(key)) byName.set(key, [])
+        byName.get(key).push(w)
+      }
+
+      for (const group of byName.values()) {
+        if (group.length < 2) continue
+        const [, ...dupes] = group
+        for (const dupe of dupes) {
+          if (dupe.membershipId) {
+            await supabase.from('workspace_members').delete().eq('id', dupe.membershipId)
+          }
+          // Only delete workspace if no other members remain
+          const { count } = await supabase
+            .from('workspace_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('workspace_id', dupe.id)
+          if ((count ?? 0) === 0) {
+            await supabase.from('workspaces').delete().eq('id', dupe.id)
+          }
+        }
+      }
+      return api.workspaces.listMine()
+    },
+
+    /**
+     * Idempotent: if user has no memberships, create personal workspace + Owner row.
+     * Concurrent callers share one in-flight promise (StrictMode / double refresh safe).
+     */
+    async ensurePersonalWorkspace({ name } = {}) {
+      if (!(await isLoggedIn())) return []
+
+      const member = await currentMember()
+      const authUser = await requireUser()
+      const email = (member?.email || authUser.email || '').toLowerCase()
+      const lockKey = email || member?.id || authUser.id
+
+      if (personalWorkspaceBootstrapInflight.has(lockKey)) {
+        return personalWorkspaceBootstrapInflight.get(lockKey)
+      }
+
+      const job = (async () => {
+        let existing = await api.workspaces.listMine()
+        if (existing.length > 0) {
+          return api.workspaces.dedupeAccidentalPersonalWorkspaces()
+        }
+
+        const fullName =
+          member?.name ||
+          authUser.user_metadata?.full_name ||
+          authUser.user_metadata?.name ||
+          (email ? email.split('@')[0] : 'Owner')
+        const ownerId = member?.id || uid('user')
+        const wsName = (name || `${fullName}'s Workspace`).trim() || 'My Workspace'
+        const now = new Date().toISOString()
+
+        // Re-check under lock before insert (another tab may have finished)
+        existing = await api.workspaces.listMine()
+        if (existing.length > 0) return existing
+
+        const workspaceId = crypto.randomUUID()
+        const membershipId = crypto.randomUUID()
+        const { data: workspace, error: wsErr } = await supabase
+          .from('workspaces')
+          .insert({
+            id: workspaceId,
+            name: wsName,
+            owner_id: ownerId,
+            owner_email: email,
+            working_hours_start: '09:00',
+            working_hours_end: '17:00',
+            ping_frequency: 'Once daily',
+            ai_tone: 'Friendly & casual',
+            created_date: now,
+            updated_date: now,
+            created_by_id: ownerId,
+          })
+          .select('*')
+          .single()
+        throwIfError(wsErr, 'Failed to create workspace')
+
+        const { error: memErr } = await supabase.from('workspace_members').insert({
+          id: membershipId,
+          workspace_id: workspace.id,
+          user_id: ownerId,
+          email,
+          full_name: fullName,
+          role: 'owner',
+          status: 'active',
+          created_date: now,
+          updated_date: now,
+          created_by_id: ownerId,
+        })
+        if (memErr) {
+          const again = await api.workspaces.listMine()
+          if (again.length) return again
+          throwIfError(memErr, 'Failed to create owner membership')
+        }
+
+        return api.workspaces.listMine()
+      })().finally(() => {
+        personalWorkspaceBootstrapInflight.delete(lockKey)
+      })
+
+      personalWorkspaceBootstrapInflight.set(lockKey, job)
+      return job
+    },
+  },
+
   teamAdmin: {
     async invite({ name, email, role = 'member' }) {
       if (!(await isLoggedIn())) return null
-      const { data: existing } = await supabase
-        .from('members')
-        .select('id')
-        .ilike('email', email)
-        .maybeSingle()
-      if (existing) throw new Error('Member already exists')
+      const ws = requireWorkspaceId()
+      const checked = validateInviteInput({ name, email, role })
+      if (!checked.ok) {
+        throw new Error(
+          checked.errors.email || checked.errors.name || checked.errors.role || 'Invalid invite',
+        )
+      }
+      const { name: cleanName, email: normalized, role: cleanRole } = checked.values
 
-      const row = memberToRow({
-        id: uid('user'),
-        name,
-        email,
-        role,
-        status: 'invited',
-        joinedAt: new Date().toISOString(),
-      })
-      const { data, error } = await supabase.from('members').insert(row).select('*').single()
+      const { data: existing } = await supabase
+        .from('workspace_members')
+        .select('id, status')
+        .eq('workspace_id', ws)
+        .ilike('email', normalized)
+        .maybeSingle()
+      if (existing?.status === 'active') {
+        throw new Error('Already a member of this workspace')
+      }
+      if (existing?.status === 'invited') {
+        throw new Error('An invite is already pending for this email')
+      }
+
+      const member = await currentMember().catch(() => null)
+      const userId = uid('user')
+      const now = new Date().toISOString()
+      const { data, error } = await supabase
+        .from('workspace_members')
+        .insert({
+          id: crypto.randomUUID(),
+          workspace_id: ws,
+          user_id: userId,
+          email: normalized,
+          full_name: cleanName,
+          role: cleanRole,
+          status: 'invited',
+          created_date: now,
+          updated_date: now,
+          created_by_id: member?.id || null,
+        })
+        .select('*')
+        .single()
       throwIfError(error, 'Invite failed')
-      return mapMember(data)
+      // Pending invites stay off the Team roster until the person joins (status → active)
+      return mapWorkspaceMember(data)
     },
 
     async updateRole(memberId, role) {
       if (!(await isLoggedIn())) return null
+      if (role === 'owner') throw new Error('Cannot assign Owner via role change')
+      const ws = requireWorkspaceId()
+      const { data: target, error: findErr } = await supabase
+        .from('workspace_members')
+        .select('*')
+        .eq('workspace_id', ws)
+        .eq('user_id', memberId)
+        .maybeSingle()
+      throwIfError(findErr)
+      if (!target) throw new Error('Member not found in this workspace')
+      if (target.role === 'owner') throw new Error('Cannot change the Owner role')
+
       const { data, error } = await supabase
-        .from('members')
-        .update({ role, updated_at: new Date().toISOString() })
-        .eq('id', memberId)
+        .from('workspace_members')
+        .update({ role, updated_date: new Date().toISOString() })
+        .eq('id', target.id)
         .select('*')
         .single()
       throwIfError(error, 'Failed to update role')
-      return mapMember(data)
+      return mapWorkspaceMember(data)
     },
 
     async remove(memberId) {
       if (!(await isLoggedIn())) return { ok: true }
-      const { error } = await supabase.from('members').delete().eq('id', memberId)
+      const ws = requireWorkspaceId()
+      const { data: target, error: findErr } = await supabase
+        .from('workspace_members')
+        .select('*')
+        .eq('workspace_id', ws)
+        .eq('user_id', memberId)
+        .maybeSingle()
+      throwIfError(findErr)
+      if (!target) return { ok: true }
+      if (target.role === 'owner') throw new Error('Cannot remove the workspace Owner')
+      const { error } = await supabase.from('workspace_members').delete().eq('id', target.id)
       throwIfError(error, 'Failed to remove member')
       return { ok: true }
     },

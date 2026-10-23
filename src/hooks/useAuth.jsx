@@ -8,6 +8,7 @@ import {
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
+import { supabase } from '@/lib/supabase'
 
 const AuthContext = createContext(null)
 
@@ -19,21 +20,54 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     let active = true
-    ;(async () => {
+
+    const syncSession = async () => {
       try {
         const result = await api.auth.getSession()
-        if (active) setUser(result?.user ?? null)
+        if (!active) return
+        setUser(result?.user ?? null)
       } catch (err) {
         console.error('[auth] getSession failed', err)
         if (active) setUser(null)
       } finally {
         if (active) setLoading(false)
       }
-    })()
+    }
+
+    syncSession()
+
+    // Handles Google OAuth return + token refresh
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event) => {
+      if (!active) return
+      if (event === 'SIGNED_OUT') {
+        setUser(null)
+        setOtpChallenge(null)
+        queryClient.clear()
+        return
+      }
+      if (
+        event === 'SIGNED_IN' ||
+        event === 'TOKEN_REFRESHED' ||
+        event === 'USER_UPDATED' ||
+        event === 'INITIAL_SESSION'
+      ) {
+        try {
+          const result = await api.auth.getSession()
+          if (!active) return
+          setUser(result?.user ?? null)
+          setOtpChallenge(null)
+          if (event === 'SIGNED_IN') queryClient.invalidateQueries()
+        } catch (err) {
+          console.error('[auth] onAuthStateChange failed', err)
+        }
+      }
+    })
+
     return () => {
       active = false
+      sub?.subscription?.unsubscribe()
     }
-  }, [])
+  }, [queryClient])
 
   const login = useCallback(
     async ({ email, password }) => {

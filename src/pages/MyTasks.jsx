@@ -9,20 +9,23 @@ import TaskCard from '@/components/tasks/TaskCard'
 import StatusFilterChips from '@/components/tasks/StatusFilterChips'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+import { useWorkspace } from '@/hooks/useWorkspace'
 
 function MyTasks() {
   const { user, isAuthenticated } = useAuth()
+  const { workspaceId } = useWorkspace()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['my-tasks', user?.id ?? 'guest'],
+    queryKey: ['my-tasks', workspaceId, user?.id ?? 'guest'],
     queryFn: () => api.myTasks.list(user?.id),
-    enabled: !isAuthenticated || Boolean(user?.id),
+    enabled: !isAuthenticated || (Boolean(user?.id) && Boolean(workspaceId)),
   })
   const { data: goals = [] } = useQuery({
-    queryKey: ['goals'],
+    queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
+    enabled: !isAuthenticated || Boolean(workspaceId),
   })
 
   const goalMap = useMemo(

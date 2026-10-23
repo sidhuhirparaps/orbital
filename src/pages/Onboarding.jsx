@@ -20,8 +20,9 @@ function Onboarding() {
     setSaving(true)
     try {
       if (!isAuthenticated) await demoLogin()
+      await api.workspaces.ensurePersonalWorkspace({ name: workspaceName.trim() })
       await api.data.updateSettings({
-        workspaceName,
+        workspaceName: workspaceName.trim(),
         onboardingComplete: true,
       })
       navigate('/', { replace: true })

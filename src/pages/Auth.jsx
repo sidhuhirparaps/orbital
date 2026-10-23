@@ -93,13 +93,18 @@ function Auth() {
         provider: 'google',
         options: {
           redirectTo: `${window.location.origin}/`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'select_account',
+          },
         },
       })
       if (error) throw error
+      // Browser redirects to Google; no further UI work here
     } catch (err) {
       toast.error(
         err.message ||
-          'Google sign-in needs to be enabled in Supabase → Authentication → Providers.',
+          'Enable Google in Supabase → Authentication → Providers, then try again.',
       )
       setBusy(false)
     }

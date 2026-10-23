@@ -10,27 +10,33 @@ import TaskCard from '@/components/tasks/TaskCard'
 import StatusFilterChips from '@/components/tasks/StatusFilterChips'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
+import { useWorkspace } from '@/hooks/useWorkspace'
 import { canEditTasks } from '@/lib/roles'
 
 function Tasks() {
-  const { user, isAuthenticated } = useAuth()
+  const { isAuthenticated } = useAuth()
+  const { workspaceId, role } = useWorkspace()
   const [params, setParams] = useSearchParams()
   const initial = params.get('status') || 'all'
   const [filter, setFilter] = useState(initial)
   const queryClient = useQueryClient()
-  const showTaskUpdate = !isAuthenticated || canEditTasks(user?.role)
+  const showTaskUpdate = !isAuthenticated || canEditTasks(role)
+  const ready = !isAuthenticated || Boolean(workspaceId)
 
   const { data: tasks = [], isLoading } = useQuery({
-    queryKey: ['tasks'],
+    queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
+    enabled: ready,
   })
   const { data: goals = [] } = useQuery({
-    queryKey: ['goals'],
+    queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
+    enabled: ready,
   })
   const { data: members = [] } = useQuery({
-    queryKey: ['members'],
+    queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
+    enabled: ready,
   })
 
   const goalMap = useMemo(

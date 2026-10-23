@@ -54,6 +54,7 @@ function GoalDetail() {
     onSuccess: (data) => {
       if (!data) return
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['goals'] })
       toast.success('Task updated')
     },
   })

@@ -147,6 +147,49 @@ async function resolveMemberForAuthUser(authUser) {
   return mapMember(created.data)
 }
 
+/** Recalculate goal.progress from its tasks (done / total). */
+async function syncGoalProgress(goalId) {
+  if (!goalId) return null
+
+  const { data: tasks, error } = await supabase
+    .from('tasks')
+    .select('status')
+    .eq('goal_id', goalId)
+  throwIfError(error, 'Failed to load tasks for progress')
+
+  const list = tasks || []
+  const progress =
+    list.length === 0
+      ? 0
+      : Math.round((list.filter((t) => t.status === 'done').length / list.length) * 100)
+
+  const { data: goal, error: goalErr } = await supabase
+    .from('goals')
+    .select('status')
+    .eq('id', goalId)
+    .maybeSingle()
+  throwIfError(goalErr, 'Failed to load goal for progress')
+
+  const patch = {
+    progress,
+    updated_date: new Date().toISOString(),
+  }
+  if (progress >= 100 && goal?.status !== 'completed') {
+    patch.status = 'completed'
+  } else if (progress < 100 && goal?.status === 'completed') {
+    patch.status = 'active'
+  }
+
+  const { data, error: updateErr } = await supabase
+    .from('goals')
+    .update(patch)
+    .eq('id', goalId)
+    .select('*')
+    .single()
+  throwIfError(updateErr, 'Failed to update goal progress')
+  return mapGoal(data)
+}
+
 function collection(table, { mapRow, toRow, filterMap = {}, previewList, previewGet }) {
   return {
     async list(filter = {}) {
@@ -376,6 +419,44 @@ export const api = {
         const rows = await base.list(filter)
         const member = await currentMember().catch(() => null)
         return scopeTasks(rows, member?.id)
+      },
+      async create(payload) {
+        const base = collection('tasks', {
+          mapRow: mapTask,
+          toRow: taskToRow,
+          filterMap: { goalId: 'goal_id', assigneeId: 'assignee_id' },
+        })
+        const task = await base.create(payload)
+        if (task?.goalId) await syncGoalProgress(task.goalId)
+        return task
+      },
+      async update(id, patch) {
+        const base = collection('tasks', {
+          mapRow: mapTask,
+          toRow: taskToRow,
+          filterMap: { goalId: 'goal_id', assigneeId: 'assignee_id' },
+        })
+        const task = await base.update(id, patch)
+        if (task?.goalId) await syncGoalProgress(task.goalId)
+        return task
+      },
+      async remove(id) {
+        if (!(await isLoggedIn())) return { ok: true }
+        const existing = await supabase
+          .from('tasks')
+          .select('goal_id')
+          .eq('id', id)
+          .maybeSingle()
+        throwIfError(existing.error, 'Task not found')
+        const goalId = existing.data?.goal_id
+        const base = collection('tasks', {
+          mapRow: mapTask,
+          toRow: taskToRow,
+          filterMap: { goalId: 'goal_id', assigneeId: 'assignee_id' },
+        })
+        const result = await base.remove(id)
+        if (goalId) await syncGoalProgress(goalId)
+        return result
       },
     },
     updates: {
@@ -624,6 +705,8 @@ export const api = {
         .select('*')
         .single()
       throwIfError(error, 'Failed to update task status')
+
+      if (task.goal_id) await syncGoalProgress(task.goal_id)
 
       await supabase.from('updates').insert(
         updateToRow(

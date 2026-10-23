@@ -85,6 +85,7 @@ function TaskFormModal({ open, onOpenChange, goalId, task = null }) {
       if (!data) return
       queryClient.invalidateQueries({ queryKey: ['tasks'] })
       queryClient.invalidateQueries({ queryKey: ['my-tasks'] })
+      queryClient.invalidateQueries({ queryKey: ['goals'] })
       toast.success(task ? 'Task updated' : 'Task created')
       onOpenChange(false)
     },

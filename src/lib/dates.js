@@ -67,7 +67,8 @@ export function dueClassName(value) {
 
 export function greetingForNow(date = new Date()) {
   const hour = date.getHours()
-  if (hour < 12) return 'Good Morning.'
-  if (hour < 17) return 'Good Afternoon.'
-  return 'Good Evening.'
+  // 5:00–11:59 morning · 12:00–17:59 afternoon · otherwise evening
+  if (hour >= 5 && hour < 12) return 'Good morning.'
+  if (hour >= 12 && hour < 18) return 'Good afternoon.'
+  return 'Good evening.'
 }

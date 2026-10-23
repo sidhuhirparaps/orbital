@@ -54,9 +54,9 @@ export function AuthProvider({ children }) {
         try {
           const result = await api.auth.getSession()
           if (!active) return
+          if (event === 'SIGNED_IN') queryClient.clear()
           setUser(result?.user ?? null)
           setOtpChallenge(null)
-          if (event === 'SIGNED_IN') queryClient.invalidateQueries()
         } catch (err) {
           console.error('[auth] onAuthStateChange failed', err)
         }
@@ -69,6 +69,16 @@ export function AuthProvider({ children }) {
     }
   }, [queryClient])
 
+  const adoptSession = useCallback(
+    (nextUser) => {
+      // Drop guest/preview cache so sidebar/pages don't flash demo data
+      queryClient.clear()
+      setUser(nextUser)
+      setOtpChallenge(null)
+    },
+    [queryClient],
+  )
+
   const login = useCallback(
     async ({ email, password }) => {
       const result = await api.auth.login({ email, password })
@@ -76,12 +86,10 @@ export function AuthProvider({ children }) {
         setOtpChallenge(result)
         return result
       }
-      setUser(result.user)
-      setOtpChallenge(null)
-      queryClient.invalidateQueries()
+      adoptSession(result.user)
       return result
     },
-    [queryClient],
+    [adoptSession],
   )
 
   const verifyOtp = useCallback(
@@ -91,29 +99,23 @@ export function AuthProvider({ children }) {
         code,
         email: otpChallenge?.email || challengeId,
       })
-      setUser(result.user)
-      setOtpChallenge(null)
-      queryClient.invalidateQueries()
+      adoptSession(result.user)
       return result
     },
-    [queryClient, otpChallenge],
+    [adoptSession, otpChallenge],
   )
 
   const demoLogin = useCallback(async () => {
     const result = await api.auth.demoLogin()
-    setUser(result.user)
-    setOtpChallenge(null)
-    queryClient.invalidateQueries()
+    adoptSession(result.user)
     return result
-  }, [queryClient])
+  }, [adoptSession])
 
   const demoLoginSam = useCallback(async () => {
     const result = await api.auth.demoLoginSam()
-    setUser(result.user)
-    setOtpChallenge(null)
-    queryClient.invalidateQueries()
+    adoptSession(result.user)
     return result
-  }, [queryClient])
+  }, [adoptSession])
 
   const logout = useCallback(async () => {
     await api.auth.logout()

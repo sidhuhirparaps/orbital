@@ -9,7 +9,8 @@ import WorkspaceSwitcher from '@/components/layout/WorkspaceSwitcher'
 import { MANAGEMENT_NAV, WORKSPACE_NAV } from '@/components/layout/navConfig'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { hasLikelyAuthSession } from '@/lib/workspaceStore'
 import { isOverdue } from '@/lib/dates'
 import { cn } from '@/lib/utils'
 
@@ -49,15 +50,19 @@ function NavGroup({ title, items, collapsed }) {
 }
 
 function Sidebar() {
-  const { logout, isAuthenticated } = useAuth()
+  const { logout, isAuthenticated, loading: authLoading } = useAuth()
   const { workspaceId } = useWorkspace()
+  const ready = useQueryReady()
   const [collapsed, setCollapsed] = useState(false)
+  // Hard reload: keep Log out visible while session hydrates (never "Checking session…")
+  const showAsSignedIn = isAuthenticated || (authLoading && hasLikelyAuthSession())
 
-  const { data: tasks = [] } = useQuery({
+  const { data: tasksData } = useQuery({
     queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
-    enabled: !isAuthenticated || Boolean(workspaceId),
+    enabled: ready,
   })
+  const tasks = ready ? tasksData ?? [] : []
 
   const statusCounts = useMemo(() => {
     const blocked = tasks.filter((t) => t.status === 'blocked').length
@@ -151,21 +156,24 @@ function Sidebar() {
 
         {collapsed ? (
           <div className="flex w-full flex-col items-center gap-2">
-            {!isAuthenticated ? (
-              <Link
-                to="/auth"
-                title="Log in"
-                className="flex w-full items-center justify-center rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface py-2.5 text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground"
-                aria-label="Log in"
-              >
-                <LogIn className="h-4 w-4" />
-              </Link>
+            {!showAsSignedIn ? (
+              authLoading ? null : (
+                <Link
+                  to="/auth"
+                  title="Log in"
+                  className="flex w-full items-center justify-center rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface py-2.5 text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground"
+                  aria-label="Log in"
+                >
+                  <LogIn className="h-4 w-4" />
+                </Link>
+              )
             ) : (
               <button
                 type="button"
                 onClick={() => logout()}
+                disabled={authLoading && !isAuthenticated}
                 title="Log out"
-                className="flex w-full items-center justify-center rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface py-2.5 text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground"
+                className="flex w-full items-center justify-center rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface py-2.5 text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground disabled:opacity-70"
                 aria-label="Log out"
               >
                 <LogOut className="h-4 w-4" />
@@ -180,19 +188,24 @@ function Sidebar() {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-        ) : !isAuthenticated ? (
-          <Link
-            to="/auth"
-            className="btn-neu flex w-full items-center justify-center gap-2.5 rounded-pill px-4 py-3 text-[15px] font-medium uppercase tracking-[0.14em] text-foreground"
-          >
-            <LogIn className="h-5 w-5" />
-            <span>Log In</span>
-          </Link>
+        ) : !showAsSignedIn ? (
+          authLoading ? (
+            <div className="h-[48px]" aria-hidden />
+          ) : (
+            <Link
+              to="/auth"
+              className="btn-neu flex w-full items-center justify-center gap-2.5 rounded-pill px-4 py-3 text-[15px] font-medium uppercase tracking-[0.14em] text-foreground"
+            >
+              <LogIn className="h-5 w-5" />
+              <span>Log In</span>
+            </Link>
+          )
         ) : (
           <button
             type="button"
             onClick={() => logout()}
-            className="flex w-full items-center justify-center gap-2.5 rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface px-4 py-3 text-[15px] font-medium text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground"
+            disabled={authLoading && !isAuthenticated}
+            className="flex w-full items-center justify-center gap-2.5 rounded-pill border border-[rgba(255,252,248,0.55)] bg-surface px-4 py-3 text-[15px] font-medium text-muted shadow-neu-out-sm transition hover:shadow-neu-hover hover:text-foreground disabled:opacity-70"
           >
             <LogOut className="h-5 w-5" />
             <span>Log out</span>

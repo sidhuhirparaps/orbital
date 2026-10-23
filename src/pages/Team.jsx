@@ -20,7 +20,7 @@ import {
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 import { canInviteMembers, canManageTeam, roleLabel, ROLES } from '@/lib/roles'
 import { validateInviteInput } from '@/lib/validation'
 import { cn } from '@/lib/utils'
@@ -161,23 +161,26 @@ function Team() {
   const [email, setEmail] = useState('')
   const [role, setRole] = useState(ROLES.MEMBER)
   const [inviteErrors, setInviteErrors] = useState({})
-  const ready = !isAuthenticated || Boolean(workspaceId)
+  const ready = useQueryReady()
 
-  const { data: members = [], isLoading } = useQuery({
+  const { data: membersData, isLoading } = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
-  const { data: agents = [] } = useQuery({
+  const { data: agentsData } = useQuery({
     queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
     enabled: ready,
   })
-  const { data: tasks = [] } = useQuery({
+  const { data: tasksData } = useQuery({
     queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
     enabled: ready,
   })
+  const members = ready ? membersData ?? [] : []
+  const agents = ready ? agentsData ?? [] : []
+  const tasks = ready ? tasksData ?? [] : []
 
   const inviteMutation = useMutation({
     mutationFn: (payload) => api.teamAdmin.invite(payload),
@@ -225,7 +228,7 @@ function Team() {
     return map
   }, [members, tasks])
 
-  if (isLoading) return <PageSkeleton cards={4} />
+  if (!ready || isLoading) return <PageSkeleton cards={4} />
 
   const memberGridClass =
     members.length <= 1

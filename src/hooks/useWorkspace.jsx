@@ -18,11 +18,18 @@ import {
 
 const WorkspaceContext = createContext(null)
 
+function readInitialWorkspaceId() {
+  const id = readStoredWorkspaceId()
+  if (id) setActiveWorkspaceId(id)
+  return id
+}
+
 export function WorkspaceProvider({ children }) {
   const { user, isAuthenticated, loading: authLoading } = useAuth()
   const queryClient = useQueryClient()
   const [workspaces, setWorkspaces] = useState([])
-  const [workspaceId, setWorkspaceId] = useState(null)
+  // Hydrate from localStorage so route changes don’t briefly lose workspaceId (ready → false → skeleton)
+  const [workspaceId, setWorkspaceId] = useState(readInitialWorkspaceId)
   const [loading, setLoading] = useState(true)
   const userKey = user?.id || user?.email || null
 

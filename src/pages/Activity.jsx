@@ -6,35 +6,36 @@ import LiveActivityFeed from '@/components/activity/LiveActivityFeed'
 import ActivityItem from '@/components/activity/ActivityItem'
 import { api } from '@/api/client'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 
 function Activity() {
   const { workspaceId } = useWorkspace()
   const ready = useQueryReady()
 
-  const { data: updatesData, isLoading: uLoading } = useQuery({
+  const updatesQuery = useQuery({
     queryKey: ['updates', workspaceId],
     queryFn: () => api.data.updates.list(),
     enabled: ready,
   })
-  const { data: agentActivityData, isLoading: aLoading } = useQuery({
+  const agentActivityQuery = useQuery({
     queryKey: ['agent_activity', workspaceId],
     queryFn: () => api.data.agent_activity.list(),
     enabled: ready,
   })
-  const { data: agentsData } = useQuery({
+  const agentsQuery = useQuery({
     queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
     enabled: ready,
   })
-  const { data: membersData } = useQuery({
+  const membersQuery = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
-  const updates = ready ? updatesData ?? [] : []
-  const agentActivity = ready ? agentActivityData ?? [] : []
-  const agents = ready ? agentsData ?? [] : []
-  const members = ready ? membersData ?? [] : []
+  const updates = updatesQuery.data ?? []
+  const agentActivity = agentActivityQuery.data ?? []
+  const agents = agentsQuery.data ?? []
+  const members = membersQuery.data ?? []
 
   const sortedUpdates = useMemo(
     () => [...updates].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
@@ -51,7 +52,9 @@ function Activity() {
     [agents],
   )
 
-  if (!ready || uLoading || aLoading) return <PageSkeleton />
+  if (shouldShowPageSkeleton(ready, updatesQuery, agentActivityQuery)) {
+    return <PageSkeleton />
+  }
 
   return (
     <div className="space-y-6">

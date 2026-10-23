@@ -21,7 +21,10 @@ import OAuthHashHandler from '@/components/auth/OAuthHashHandler'
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 15_000,
+      // Keep page data warm so route changes don’t flash PageSkeleton
+      staleTime: 60_000,
+      gcTime: 30 * 60_000,
+      refetchOnMount: false,
       refetchOnWindowFocus: false,
     },
   },

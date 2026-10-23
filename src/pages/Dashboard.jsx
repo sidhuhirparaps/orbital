@@ -21,6 +21,7 @@ import { useGuardedAction } from '@/hooks/useGuardedAction'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 import { canManageGoals } from '@/lib/roles'
 import { greetingForNow } from '@/lib/dates'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 import { cn } from '@/lib/utils'
 
 const HERO_IMG =
@@ -63,38 +64,38 @@ function Dashboard() {
   const [introComplete, setIntroComplete] = useState(() => !shouldPlayDashboardGreeting())
   const onIntroComplete = useCallback(() => setIntroComplete(true), [])
 
-  const { data: goalsData, isLoading: goalsLoading } = useQuery({
+  const goalsQuery = useQuery({
     queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
     enabled: ready,
   })
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
     enabled: ready,
   })
-  const { data: updatesData, isLoading: updatesLoading } = useQuery({
+  const updatesQuery = useQuery({
     queryKey: ['updates', workspaceId],
     queryFn: () => api.data.updates.list(),
     enabled: ready,
   })
-  const { data: agentsData } = useQuery({
+  const agentsQuery = useQuery({
     queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
     enabled: ready,
   })
-  const { data: membersData } = useQuery({
+  const membersQuery = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
-  const goals = ready ? goalsData ?? [] : []
-  const tasks = ready ? tasksData ?? [] : []
-  const updates = ready ? updatesData ?? [] : []
-  const agents = ready ? agentsData ?? [] : []
-  const members = ready ? membersData ?? [] : []
+  const goals = goalsQuery.data ?? []
+  const tasks = tasksQuery.data ?? []
+  const updates = updatesQuery.data ?? []
+  const agents = agentsQuery.data ?? []
+  const members = membersQuery.data ?? []
 
-  const loading = !ready || goalsLoading || tasksLoading || updatesLoading
+  const loading = shouldShowPageSkeleton(ready, goalsQuery, tasksQuery, updatesQuery)
   const metricsActive = introComplete && !loading
 
   const stats = useMemo(() => {

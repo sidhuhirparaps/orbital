@@ -11,6 +11,7 @@ import StatusFilterChips from '@/components/tasks/StatusFilterChips'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 import { canEditTasks } from '@/lib/roles'
 
 function Tasks() {
@@ -23,24 +24,24 @@ function Tasks() {
   const queryClient = useQueryClient()
   const showTaskUpdate = !isAuthenticated || canEditTasks(role)
 
-  const { data: tasksData, isLoading } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: ['tasks', workspaceId],
     queryFn: () => api.data.tasks.list(),
     enabled: ready,
   })
-  const { data: goalsData } = useQuery({
+  const goalsQuery = useQuery({
     queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
     enabled: ready,
   })
-  const { data: membersData } = useQuery({
+  const membersQuery = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
-  const tasks = ready ? tasksData ?? [] : []
-  const goals = ready ? goalsData ?? [] : []
-  const members = ready ? membersData ?? [] : []
+  const tasks = tasksQuery.data ?? []
+  const goals = goalsQuery.data ?? []
+  const members = membersQuery.data ?? []
 
   const goalMap = useMemo(
     () => Object.fromEntries(goals.map((g) => [g.id, g.title])),
@@ -80,7 +81,7 @@ function Tasks() {
     else setParams({ status: value })
   }
 
-  if (!ready || isLoading) return <PageSkeleton />
+  if (shouldShowPageSkeleton(ready, tasksQuery)) return <PageSkeleton />
 
   return (
     <div>

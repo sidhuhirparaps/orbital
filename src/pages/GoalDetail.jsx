@@ -14,6 +14,7 @@ import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
 import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
+import { shouldShowPageSkeleton } from '@/lib/queryUi'
 import { canEditTasks, canManageGoals } from '@/lib/roles'
 import { dueClassName, dueLabel, formatDate } from '@/lib/dates'
 import { cn } from '@/lib/utils'
@@ -29,24 +30,24 @@ function GoalDetail() {
   const showTaskUpdate = !isAuthenticated || canEditTasks(role)
   const ready = useQueryReady()
 
-  const { data: goalData, isLoading: goalLoading } = useQuery({
+  const goalQuery = useQuery({
     queryKey: ['goals', workspaceId, goalId],
     queryFn: () => api.data.goals.get(goalId),
     enabled: ready,
   })
-  const { data: tasksData, isLoading: tasksLoading } = useQuery({
+  const tasksQuery = useQuery({
     queryKey: ['tasks', workspaceId, { goalId }],
     queryFn: () => api.data.tasks.list({ goalId }),
     enabled: ready,
   })
-  const { data: membersData } = useQuery({
+  const membersQuery = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
-  const goal = ready ? goalData : undefined
-  const tasks = ready ? tasksData ?? [] : []
-  const members = ready ? membersData ?? [] : []
+  const goal = goalQuery.data
+  const tasks = tasksQuery.data ?? []
+  const members = membersQuery.data ?? []
 
   const memberMap = useMemo(
     () => Object.fromEntries(members.map((m) => [m.id, m.name])),
@@ -68,7 +69,7 @@ function GoalDetail() {
     },
   })
 
-  if (!ready || goalLoading || tasksLoading) return <PageSkeleton />
+  if (shouldShowPageSkeleton(ready, goalQuery, tasksQuery)) return <PageSkeleton />
   if (!goal) {
     return (
       <EmptyState

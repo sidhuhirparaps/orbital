@@ -17,7 +17,7 @@ import {
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 
 const HOUR_OPTIONS = Array.from({ length: 24 }, (_, i) =>
   `${String(i).padStart(2, '0')}:00`,
@@ -34,12 +34,13 @@ const TONE_OPTIONS = [
 function Settings() {
   const { isAuthenticated } = useAuth()
   const { workspaceId, refresh } = useWorkspace()
+  const ready = useQueryReady()
   const guard = useGuardedAction()
   const queryClient = useQueryClient()
   const { data, isLoading } = useQuery({
     queryKey: ['settings', workspaceId],
     queryFn: () => api.data.getSettings(),
-    enabled: !isAuthenticated || Boolean(workspaceId),
+    enabled: ready,
   })
 
   const [workspaceName, setWorkspaceName] = useState('My Team')
@@ -75,7 +76,7 @@ function Settings() {
     onError: (err) => toast.error(err.message || 'Save failed'),
   })
 
-  if (isLoading) return <PageSkeleton cards={2} />
+  if (!ready || isLoading) return <PageSkeleton cards={2} />
 
   return (
     <div className="space-y-5">

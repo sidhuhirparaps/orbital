@@ -22,7 +22,7 @@ import {
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 
 const STATUSES = [
   { value: 'pending', label: 'Pending' },
@@ -33,15 +33,17 @@ const STATUSES = [
 ]
 
 function TaskFormModal({ open, onOpenChange, goalId, task = null }) {
-  const { user, isAuthenticated } = useAuth()
+  const { user } = useAuth()
   const { workspaceId } = useWorkspace()
+  const ready = useQueryReady()
   const guard = useGuardedAction()
   const queryClient = useQueryClient()
-  const { data: members = [] } = useQuery({
+  const { data: membersData } = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
-    enabled: !isAuthenticated || Boolean(workspaceId),
+    enabled: ready,
   })
+  const members = ready ? membersData ?? [] : []
 
   const [title, setTitle] = useState('')
   const [notes, setNotes] = useState('')

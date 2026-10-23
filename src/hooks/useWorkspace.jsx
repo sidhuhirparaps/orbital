@@ -10,28 +10,13 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import {
-  ACTIVE_WORKSPACE_STORAGE_KEY,
+  readStoredWorkspaceId,
   setActiveWorkspaceId,
+  writeStoredWorkspaceId,
+  writeStoredWorkspaceLabel,
 } from '@/lib/workspaceStore'
 
 const WorkspaceContext = createContext(null)
-
-function readStoredId() {
-  try {
-    return localStorage.getItem(ACTIVE_WORKSPACE_STORAGE_KEY)
-  } catch {
-    return null
-  }
-}
-
-function writeStoredId(id) {
-  try {
-    if (id) localStorage.setItem(ACTIVE_WORKSPACE_STORAGE_KEY, id)
-    else localStorage.removeItem(ACTIVE_WORKSPACE_STORAGE_KEY)
-  } catch {
-    /* ignore */
-  }
-}
 
 export function WorkspaceProvider({ children }) {
   const { user, isAuthenticated, loading: authLoading } = useAuth()
@@ -45,7 +30,13 @@ export function WorkspaceProvider({ children }) {
     const valid = list.find((w) => w.id === id)?.id || list[0]?.id || null
     setWorkspaceId(valid)
     setActiveWorkspaceId(valid)
-    writeStoredId(valid)
+    writeStoredWorkspaceId(valid)
+    const active = list.find((w) => w.id === valid)
+    if (active) {
+      writeStoredWorkspaceLabel({ name: active.name, role: active.role })
+    } else if (!valid) {
+      writeStoredWorkspaceLabel(null)
+    }
     return valid
   }, [])
 
@@ -62,7 +53,7 @@ export function WorkspaceProvider({ children }) {
         name: user.name ? `${user.name}'s Workspace` : 'My Workspace',
       })
       setWorkspaces(list)
-      applyActive(readStoredId(), list)
+      applyActive(readStoredWorkspaceId(), list)
       return list
     } catch (err) {
       console.error('[workspace] refresh failed', err)
@@ -76,6 +67,17 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     if (authLoading) return undefined
+
+    if (!isAuthenticated || !userKey) {
+      setWorkspaces([])
+      applyActive(null, [])
+      writeStoredWorkspaceLabel(null)
+      setLoading(false)
+      return undefined
+    }
+
+    // Sync before paint so we never flash guest/preview chrome after login
+    setLoading(true)
     let cancelled = false
     ;(async () => {
       const list = await refresh()
@@ -139,6 +141,18 @@ export function useWorkspace() {
     throw new Error('useWorkspace must be used within WorkspaceProvider')
   }
   return ctx
+}
+
+/**
+ * When to fetch page data:
+ * - Auth still resolving → wait (don't treat as guest preview)
+ * - Guest → preview OK
+ * - Signed in → wait until active workspace id is known
+ */
+export function useQueryReady() {
+  const { isAuthenticated, loading: authLoading } = useAuth()
+  const { workspaceId } = useWorkspace()
+  return !authLoading && (!isAuthenticated || Boolean(workspaceId))
 }
 
 export default useWorkspace

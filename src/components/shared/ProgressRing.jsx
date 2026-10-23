@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 function ProgressRing({
@@ -7,8 +8,32 @@ function ProgressRing({
   className,
   label,
   showValue = true,
+  /** When false, hold at 0 until true (e.g. after dashboard greeting). */
+  animate = true,
 }) {
-  const clamped = Math.min(100, Math.max(0, value))
+  const target = Math.min(100, Math.max(0, value))
+  const [display, setDisplay] = useState(animate ? 0 : target)
+
+  useEffect(() => {
+    if (!animate) {
+      setDisplay(target)
+      return undefined
+    }
+    setDisplay(0)
+    const start = performance.now()
+    const duration = 700
+    let frame = 0
+    const tick = (now) => {
+      const t = Math.min(1, (now - start) / duration)
+      const eased = 1 - (1 - t) ** 3
+      setDisplay(target * eased)
+      if (t < 1) frame = requestAnimationFrame(tick)
+    }
+    frame = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(frame)
+  }, [animate, target])
+
+  const clamped = display
   const radius = (size - stroke) / 2
   const circumference = 2 * Math.PI * radius
   const offset = circumference - (clamped / 100) * circumference
@@ -53,7 +78,6 @@ function ProgressRing({
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={offset}
-            className="transition-all duration-700 ease-out"
             style={
               isHero
                 ? { filter: 'drop-shadow(0 1px 3px rgba(46, 204, 138, 0.35))' }

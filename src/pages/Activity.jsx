@@ -5,34 +5,36 @@ import PageSkeleton from '@/components/shared/PageSkeleton'
 import LiveActivityFeed from '@/components/activity/LiveActivityFeed'
 import ActivityItem from '@/components/activity/ActivityItem'
 import { api } from '@/api/client'
-import { useAuth } from '@/hooks/useAuth'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 
 function Activity() {
-  const { isAuthenticated } = useAuth()
   const { workspaceId } = useWorkspace()
-  const ready = !isAuthenticated || Boolean(workspaceId)
+  const ready = useQueryReady()
 
-  const { data: updates = [], isLoading: uLoading } = useQuery({
+  const { data: updatesData, isLoading: uLoading } = useQuery({
     queryKey: ['updates', workspaceId],
     queryFn: () => api.data.updates.list(),
     enabled: ready,
   })
-  const { data: agentActivity = [], isLoading: aLoading } = useQuery({
+  const { data: agentActivityData, isLoading: aLoading } = useQuery({
     queryKey: ['agent_activity', workspaceId],
     queryFn: () => api.data.agent_activity.list(),
     enabled: ready,
   })
-  const { data: agents = [] } = useQuery({
+  const { data: agentsData } = useQuery({
     queryKey: ['agents', workspaceId],
     queryFn: () => api.data.agents.list(),
     enabled: ready,
   })
-  const { data: members = [] } = useQuery({
+  const { data: membersData } = useQuery({
     queryKey: ['members', workspaceId],
     queryFn: () => api.data.members.list(),
     enabled: ready,
   })
+  const updates = ready ? updatesData ?? [] : []
+  const agentActivity = ready ? agentActivityData ?? [] : []
+  const agents = ready ? agentsData ?? [] : []
+  const members = ready ? membersData ?? [] : []
 
   const sortedUpdates = useMemo(
     () => [...updates].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)),
@@ -49,7 +51,7 @@ function Activity() {
     [agents],
   )
 
-  if (uLoading || aLoading) return <PageSkeleton />
+  if (!ready || uLoading || aLoading) return <PageSkeleton />
 
   return (
     <div className="space-y-6">

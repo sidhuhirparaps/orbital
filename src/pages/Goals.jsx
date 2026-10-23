@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
 import { useGuardedAction } from '@/hooks/useGuardedAction'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 import { canManageGoals } from '@/lib/roles'
 import { cn } from '@/lib/utils'
 
@@ -23,16 +23,18 @@ const FILTERS = [
 function Goals() {
   const { isAuthenticated } = useAuth()
   const { workspaceId, role } = useWorkspace()
+  const ready = useQueryReady()
   const guard = useGuardedAction()
   const [filter, setFilter] = useState('active')
   const [wizardOpen, setWizardOpen] = useState(false)
   const showManage = !isAuthenticated || canManageGoals(role)
 
-  const { data: goals = [], isLoading } = useQuery({
+  const { data: goalsData, isLoading } = useQuery({
     queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
-    enabled: !isAuthenticated || Boolean(workspaceId),
+    enabled: ready,
   })
+  const goals = ready ? goalsData ?? [] : []
 
   const filtered = useMemo(() => {
     if (filter === 'all') return goals
@@ -40,7 +42,7 @@ function Goals() {
     return goals.filter((g) => g.status === 'active')
   }, [goals, filter])
 
-  if (isLoading) return <PageSkeleton />
+  if (!ready || isLoading) return <PageSkeleton />
 
   return (
     <div>

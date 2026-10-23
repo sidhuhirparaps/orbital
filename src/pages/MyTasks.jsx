@@ -9,24 +9,28 @@ import TaskCard from '@/components/tasks/TaskCard'
 import StatusFilterChips from '@/components/tasks/StatusFilterChips'
 import { api } from '@/api/client'
 import { useAuth } from '@/hooks/useAuth'
-import { useWorkspace } from '@/hooks/useWorkspace'
+import { useQueryReady, useWorkspace } from '@/hooks/useWorkspace'
 
 function MyTasks() {
   const { user, isAuthenticated } = useAuth()
   const { workspaceId } = useWorkspace()
+  const ready = useQueryReady()
   const queryClient = useQueryClient()
   const [filter, setFilter] = useState('all')
+  const tasksReady = ready && (!isAuthenticated || Boolean(user?.id))
 
-  const { data: tasks = [], isLoading } = useQuery({
+  const { data: tasksData, isLoading } = useQuery({
     queryKey: ['my-tasks', workspaceId, user?.id ?? 'guest'],
     queryFn: () => api.myTasks.list(user?.id),
-    enabled: !isAuthenticated || (Boolean(user?.id) && Boolean(workspaceId)),
+    enabled: tasksReady,
   })
-  const { data: goals = [] } = useQuery({
+  const { data: goalsData } = useQuery({
     queryKey: ['goals', workspaceId],
     queryFn: () => api.data.goals.list(),
-    enabled: !isAuthenticated || Boolean(workspaceId),
+    enabled: ready,
   })
+  const tasks = tasksReady ? tasksData ?? [] : []
+  const goals = ready ? goalsData ?? [] : []
 
   const goalMap = useMemo(
     () => Object.fromEntries(goals.map((g) => [g.id, g.title])),
@@ -58,7 +62,7 @@ function MyTasks() {
     },
   })
 
-  if (isLoading) return <PageSkeleton />
+  if (!tasksReady || isLoading) return <PageSkeleton />
 
   return (
     <div>

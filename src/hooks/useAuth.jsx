@@ -54,7 +54,8 @@ export function AuthProvider({ children }) {
         try {
           const result = await api.auth.getSession()
           if (!active) return
-          if (event === 'SIGNED_IN') queryClient.clear()
+          // Do not clear the query cache on SIGNED_IN — Supabase can re-emit this
+          // after session recovery and wiping cache forces skeleton flashes on navigation.
           setUser(result?.user ?? null)
           setOtpChallenge(null)
         } catch (err) {
